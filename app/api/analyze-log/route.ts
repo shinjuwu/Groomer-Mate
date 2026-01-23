@@ -30,16 +30,16 @@ export async function POST(req: Request) {
         // 處理不同的音訊格式
         let mimeType = audioFile.type;
         console.log('Received audio file type:', mimeType);
-        
+
         // 如果是 webm，使用 audio/webm；否則使用原始類型
         if (!mimeType || mimeType === '') {
             mimeType = 'audio/webm'; // 預設值
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Use gemini-1.5-flash-latest for cost efficiency with audio support
+        // Revert to stable model name
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash-latest",
+            model: "gemini-1.5-flash",
             generationConfig: { responseMimeType: "application/json" }
         });
 
