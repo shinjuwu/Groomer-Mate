@@ -12,15 +12,19 @@ export default function Home() {
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-    const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
-
-    // Result State
-    const [showResult, setShowResult] = useState(false);
-    const [result, setResult] = useState<any>(null);
+    const isPressedRef = useRef(false);
 
     const startRecording = async () => {
+        isPressedRef.current = true;
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            // Check if user has already released the button while waiting for permission
+            if (!isPressedRef.current) {
+                stream.getTracks().forEach(track => track.stop());
+                return;
+            }
+
             const recorder = new MediaRecorder(stream);
             const chunks: Blob[] = [];
 
@@ -29,9 +33,9 @@ export default function Home() {
             };
 
             recorder.onstop = async () => {
-                const audioBlob = new Blob(chunks, { type: 'audio/mp3' }); // Gemini accepts mp3/wav/etc
+                const audioBlob = new Blob(chunks, { type: 'audio/mp3' });
                 handleAnalysis(audioBlob);
-                stream.getTracks().forEach(track => track.stop()); // Stop stream
+                stream.getTracks().forEach(track => track.stop());
             };
 
             recorder.start();
@@ -39,14 +43,18 @@ export default function Home() {
             setIsRecording(true);
         } catch (err) {
             console.error("Error accessing microphone:", err);
+            // reset state if permission denied or error
+            isPressedRef.current = false;
             alert("無法存取麥克風，請確認權限設定。");
         }
     };
 
     const stopRecording = () => {
+        isPressedRef.current = false;
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
             setIsRecording(false);
+            setMediaRecorder(null); // Clear recorder reference
         }
     };
 
