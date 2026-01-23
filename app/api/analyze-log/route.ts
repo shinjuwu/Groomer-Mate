@@ -37,9 +37,9 @@ export async function POST(req: Request) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Use Flash-Lite which usually has better free quota
+        // Try the stable alias 'gemini-flash-latest' which is in your available list
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.0-flash-lite-preview-02-05",
+            model: "gemini-flash-latest",
             generationConfig: { responseMimeType: "application/json" }
         });
 
