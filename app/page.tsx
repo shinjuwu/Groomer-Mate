@@ -13,7 +13,7 @@ export default function Home() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
     const isPressedRef = useRef(false);
-    
+
     // 串流快取：權限只需授權一次
     const streamRef = useRef<MediaStream | null>(null);
     const isRequestingPermission = useRef(false);
@@ -25,7 +25,7 @@ export default function Home() {
     const startRecording = async () => {
         // 防呆 1：如果已經在錄音中，不要重複觸發
         if (isRecording) return;
-        
+
         // 防呆 2：如果正在請求權限，不要重複請求
         if (isRequestingPermission.current) return;
 
@@ -35,7 +35,7 @@ export default function Home() {
             // 如果還沒有串流，先取得權限（只會在第一次執行）
             if (!streamRef.current) {
                 isRequestingPermission.current = true;
-                
+
                 try {
                     streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
                 } finally {
@@ -76,13 +76,13 @@ export default function Home() {
             isRequestingPermission.current = false;
             isPressedRef.current = false;
             setIsRecording(false);
-            
+
             // 如果權限被拒絕，清除串流快取
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(track => track.stop());
                 streamRef.current = null;
             }
-            
+
             alert("無法存取麥克風，請確認權限設定。");
         }
     };
@@ -103,7 +103,7 @@ export default function Home() {
             if (isPressedRef.current) {
                 // 不論是否正在錄音，只要全域放開就停止
                 isPressedRef.current = false;
-                
+
                 // 如果正在錄音，立即停止
                 if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
                     mediaRecorder.stop();
@@ -124,6 +124,9 @@ export default function Home() {
 
     const handleAnalysis = async (audioBlob: Blob) => {
         setIsProcessing(true);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s Timeout
+
         try {
             const formData = new FormData();
             formData.append('audio', audioBlob, 'recording.webm');
@@ -131,13 +134,16 @@ export default function Home() {
             const response = await fetch('/api/analyze-log', {
                 method: 'POST',
                 body: formData,
+                signal: controller.signal,
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 // 取得詳細錯誤訊息
-                const errorData = await response.json();
+                const errorData = await response.json().catch(() => ({}));
                 console.error("API Error:", errorData);
-                throw new Error(errorData.error || 'Analysis failed');
+                throw new Error(errorData.error || `Server Error: ${response.status}`);
             }
 
             const data = await response.json();
@@ -145,16 +151,20 @@ export default function Home() {
             setShowResult(true);
         } catch (error: any) {
             console.error("Analysis Error:", error);
-            // 顯示詳細錯誤訊息
-            alert(`分析失敗：${error.message || '請稍後再試'}`);
+            if (error.name === 'AbortError') {
+                alert("分析請求逾時 (超過 60 秒)，請檢查網路連線或稍後再試。");
+            } else {
+                alert(`分析失敗：${error.message || '請稍後再試'}`);
+            }
         } finally {
+            clearTimeout(timeoutId);
             setIsProcessing(false);
         }
     };
 
     useEffect(() => {
         setMounted(true);
-        
+
         // 清理函數：Component 卸載時關閉串流
         return () => {
             if (streamRef.current) {
