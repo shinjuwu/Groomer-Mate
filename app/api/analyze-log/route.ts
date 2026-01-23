@@ -43,12 +43,16 @@ export async function POST(req: Request) {
             generationConfig: { responseMimeType: "application/json" }
         });
 
-        const prompt = `你是一位台灣專業的寵物美容助理。請聆聽這段錄音（可能包含環境音和台語夾雜），並提取關鍵資訊。請回傳純 JSON 格式，包含以下欄位：
+        const prompt = `你是一位台灣專業的寵物美容助理。請聆聽這段錄音（可能包含環境音和台語夾雜），並提取關鍵資訊。
 
-transcription: 逐字稿。
-tags: 陣列，例如 ["皮膚紅腫", "指甲流血", "很乖"]。
-summary: 一段給飼主看的文字，語氣要親切、溫柔，用『我們今天幫...』開頭。
-internal_memo: 給美容師看的專業術語紀錄。`;
+請嚴格遵守以下規則：
+1. **絕對不要捏造**：只根據錄音內容填寫，如果錄音中沒有提到某些資訊（如品種、症狀），請留空或寫「未提及」。
+2. **過濾無效內容**：如果錄音內容太短、只是「測試測試」、或聽不清楚，請在 summary 欄位回傳：「錄音內容太短或無法辨識，請重新錄製。」，並將 tags 設為空陣列。
+3. **格式要求**：請回傳純 JSON 格式，包含以下欄位：
+   - transcription: 逐字稿。
+   - tags: 陣列，例如 ["皮膚紅腫", "指甲流血", "很乖"]。
+   - summary: 一段給飼主看的文字，語氣要親切、溫柔。
+   - internal_memo: 給美容師看的專業術語紀錄。`;
 
         console.log('Sending audio to Gemini with mimeType:', mimeType);
 
