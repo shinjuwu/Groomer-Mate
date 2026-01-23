@@ -19,11 +19,15 @@ export default function Home() {
     const [result, setResult] = useState<any>(null);
 
     const startRecording = async () => {
+        // 防呆：如果已經在錄音中，不要重複觸發
+        if (isRecording) return;
+
         isPressedRef.current = true;
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            // Check if user has already released the button while waiting for permission
+            // 關鍵修復：權限彈窗會導致 mouseup 事件遺失
+            // 當 getUserMedia 回傳時，檢查使用者是否已放開按鈕
             if (!isPressedRef.current) {
                 stream.getTracks().forEach(track => track.stop());
                 return;
@@ -47,8 +51,9 @@ export default function Home() {
             setIsRecording(true);
         } catch (err) {
             console.error("Error accessing microphone:", err);
-            // reset state if permission denied or error
+            // 重置狀態
             isPressedRef.current = false;
+            setIsRecording(false);
             alert("無法存取麥克風，請確認權限設定。");
         }
     };
@@ -58,9 +63,35 @@ export default function Home() {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
             setIsRecording(false);
-            setMediaRecorder(null); // Clear recorder reference
+            setMediaRecorder(null);
         }
     };
+
+    // 全域監聽：防止權限彈窗導致的 mouseup/touchend 事件遺失
+    // 以及滑鼠移出按鈕範圍後無法停止錄音的問題
+    useEffect(() => {
+        const handleGlobalRelease = () => {
+            if (isPressedRef.current) {
+                // 不論是否正在錄音，只要全域放開就停止
+                isPressedRef.current = false;
+                
+                // 如果正在錄音，立即停止
+                if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                    setIsRecording(false);
+                    setMediaRecorder(null);
+                }
+            }
+        };
+
+        window.addEventListener('mouseup', handleGlobalRelease);
+        window.addEventListener('touchend', handleGlobalRelease);
+
+        return () => {
+            window.removeEventListener('mouseup', handleGlobalRelease);
+            window.removeEventListener('touchend', handleGlobalRelease);
+        };
+    }, [isRecording, mediaRecorder]);
 
     const handleAnalysis = async (audioBlob: Blob) => {
         setIsProcessing(true);
