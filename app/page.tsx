@@ -35,13 +35,18 @@ export default function Home() {
             // 如果還沒有串流，先取得權限（只會在第一次執行）
             if (!streamRef.current) {
                 isRequestingPermission.current = true;
-                streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-                isRequestingPermission.current = false;
-
-                // 權限彈窗期間，使用者可能已放開按鈕
-                if (!isPressedRef.current) {
-                    return; // 不開始錄音，但保留串流供下次使用
+                
+                try {
+                    streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+                } finally {
+                    isRequestingPermission.current = false;
                 }
+
+                // 關鍵修復：權限彈窗期間，使用者必定已放開按鈕
+                // 第一次授權後，不應該自動開始錄音
+                console.log('權限已授權，請再次按住按鈕開始錄音');
+                isPressedRef.current = false;
+                return; // 不開始錄音，但保留串流供下次使用
             }
 
             // 再次確認使用者是否還按著按鈕（雙保險）
@@ -56,7 +61,9 @@ export default function Home() {
             };
 
             recorder.onstop = async () => {
-                const audioBlob = new Blob(chunks, { type: 'audio/mp3' });
+                // 使用正確的 MIME type
+                const mimeType = recorder.mimeType || 'audio/webm';
+                const audioBlob = new Blob(chunks, { type: mimeType });
                 handleAnalysis(audioBlob);
                 // 注意：不再關閉串流，保留供下次使用
             };

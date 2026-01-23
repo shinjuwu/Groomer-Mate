@@ -27,6 +27,15 @@ export async function POST(req: Request) {
         const buffer = Buffer.from(arrayBuffer);
         const base64Audio = buffer.toString("base64");
 
+        // 處理不同的音訊格式
+        let mimeType = audioFile.type;
+        console.log('Received audio file type:', mimeType);
+        
+        // 如果是 webm，使用 audio/webm；否則使用原始類型
+        if (!mimeType || mimeType === '') {
+            mimeType = 'audio/webm'; // 預設值
+        }
+
         const genAI = new GoogleGenerativeAI(apiKey);
         // Use gemini-1.5-flash as requested for cost efficiency
         const model = genAI.getGenerativeModel({
@@ -41,11 +50,13 @@ tags: 陣列，例如 ["皮膚紅腫", "指甲流血", "很乖"]。
 summary: 一段給飼主看的文字，語氣要親切、溫柔，用『我們今天幫...』開頭。
 internal_memo: 給美容師看的專業術語紀錄。`;
 
+        console.log('Sending audio to Gemini with mimeType:', mimeType);
+
         const result = await model.generateContent([
             prompt,
             {
                 inlineData: {
-                    mimeType: audioFile.type || "audio/mp3", // Default to mp3 if type is missing, though browser should send it
+                    mimeType: mimeType,
                     data: base64Audio,
                 },
             },
