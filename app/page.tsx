@@ -14,6 +14,10 @@ export default function Home() {
     const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
     const isPressedRef = useRef(false);
 
+    // Result State
+    const [showResult, setShowResult] = useState(false);
+    const [result, setResult] = useState<any>(null);
+
     const startRecording = async () => {
         isPressedRef.current = true;
         try {
