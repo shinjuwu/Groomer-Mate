@@ -37,9 +37,9 @@ export async function POST(req: Request) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Revert to stable model name
+        // Use gemini-2.0-flash as confirmed by debug list
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
+            model: "gemini-2.0-flash",
             generationConfig: { responseMimeType: "application/json" }
         });
 
