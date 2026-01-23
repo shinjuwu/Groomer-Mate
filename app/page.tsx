@@ -126,21 +126,27 @@ export default function Home() {
         setIsProcessing(true);
         try {
             const formData = new FormData();
-            formData.append('audio', audioBlob, 'recording.mp3');
+            formData.append('audio', audioBlob, 'recording.webm');
 
             const response = await fetch('/api/analyze-log', {
                 method: 'POST',
                 body: formData,
             });
 
-            if (!response.ok) throw new Error('Analysis failed');
+            if (!response.ok) {
+                // 取得詳細錯誤訊息
+                const errorData = await response.json();
+                console.error("API Error:", errorData);
+                throw new Error(errorData.error || 'Analysis failed');
+            }
 
             const data = await response.json();
             setResult(data);
             setShowResult(true);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Analysis Error:", error);
-            alert("分析失敗，請稍後再試。");
+            // 顯示詳細錯誤訊息
+            alert(`分析失敗：${error.message || '請稍後再試'}`);
         } finally {
             setIsProcessing(false);
         }
