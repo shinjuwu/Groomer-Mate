@@ -1,8 +1,13 @@
 'use client';
 
 import { useLiff } from '@/components/LiffProvider';
-import { Mic } from 'lucide-react';
-import { useRef, useEffect, useState } from 'react';
+import { Mic, Share2 } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { saveGroomingLog, uploadAudio } from '@/lib/api';
+import { shareGroomingSummary } from '@/lib/line-share';
+import Toast, { type ToastType } from '@/components/Toast';
+import PetSelector from '@/components/PetSelector';
+import type { AnalysisResult } from '@/types/grooming-log';
 
 export default function Home() {
     const { isLoggedIn, profile, error, liff } = useLiff();
@@ -18,9 +23,23 @@ export default function Home() {
     const streamRef = useRef<MediaStream | null>(null);
     const isRequestingPermission = useRef(false);
 
+    // Pet selection
+    const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
+    const [selectedPetName, setSelectedPetName] = useState<string | undefined>();
+
     // Result State
     const [showResult, setShowResult] = useState(false);
-    const [result, setResult] = useState<any>(null);
+    const [result, setResult] = useState<AnalysisResult | null>(null);
+    const audioBlobRef = useRef<Blob | null>(null);
+
+    // Save State
+    const [isSaving, setIsSaving] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+
+    const handlePetSelect = useCallback((petId: string | null, petName?: string) => {
+        setSelectedPetId(petId);
+        setSelectedPetName(petName);
+    }, []);
 
     const startRecording = async () => {
         // 防呆 1：如果已經在錄音中，不要重複觸發
@@ -64,6 +83,7 @@ export default function Home() {
                 // 使用正確的 MIME type
                 const mimeType = recorder.mimeType || 'audio/webm';
                 const audioBlob = new Blob(chunks, { type: mimeType });
+                audioBlobRef.current = audioBlob;
                 handleAnalysis(audioBlob);
                 // 注意：不再關閉串流，保留供下次使用
             };
@@ -83,7 +103,7 @@ export default function Home() {
                 streamRef.current = null;
             }
 
-            alert("無法存取麥克風，請確認權限設定。");
+            setToast({ message: '無法存取麥克風，請確認權限設定。', type: 'error' });
         }
     };
 
@@ -152,15 +172,65 @@ export default function Home() {
         } catch (error: any) {
             console.error("Analysis Error:", error);
             if (error.name === 'AbortError') {
-                alert("分析請求逾時 (超過 60 秒)，請檢查網路連線或稍後再試。");
+                setToast({ message: '分析請求逾時 (超過 60 秒)，請檢查網路連線或稍後再試。', type: 'error' });
             } else {
-                alert(`分析失敗：${error.message || '請稍後再試'}`);
+                setToast({ message: `分析失敗：${error.message || '請稍後再試'}`, type: 'error' });
             }
         } finally {
             clearTimeout(timeoutId);
             setIsProcessing(false);
         }
     };
+
+    const handleSave = useCallback(async () => {
+        if (!profile?.userId || !result || isSaving) return;
+        setIsSaving(true);
+        try {
+            // Upload audio file first
+            let audioUrl: string | undefined;
+            if (audioBlobRef.current) {
+                try {
+                    const uploaded = await uploadAudio(audioBlobRef.current);
+                    audioUrl = uploaded.url;
+                } catch (err) {
+                    console.error('Audio upload failed:', err);
+                    setToast({ message: '音檔上傳失敗，僅儲存文字紀錄', type: 'error' });
+                }
+            }
+
+            await saveGroomingLog({
+                userId: profile.userId,
+                transcription: result.transcription,
+                summary: result.summary,
+                tags: result.tags,
+                internalMemo: result.internal_memo,
+                petId: selectedPetId || undefined,
+                audioUrl,
+            });
+            setShowResult(false);
+            setResult(null);
+            audioBlobRef.current = null;
+            setToast({ message: '紀錄已儲存！', type: 'success' });
+        } catch (err: any) {
+            console.error('Save failed:', err);
+            setToast({ message: '儲存失敗，請再試一次', type: 'error' });
+        } finally {
+            setIsSaving(false);
+        }
+    }, [profile?.userId, result, isSaving, selectedPetId]);
+
+    const handleShare = useCallback(async () => {
+        if (!liff || !result?.summary) return;
+        const success = await shareGroomingSummary(liff, {
+            summary: result.summary,
+            petName: selectedPetName,
+        });
+        if (success) {
+            setToast({ message: '已分享！', type: 'success' });
+        } else if (!liff.isInClient()) {
+            setToast({ message: '分享功能僅支援 LINE 內建瀏覽器', type: 'error' });
+        }
+    }, [liff, result?.summary, selectedPetName]);
 
     useEffect(() => {
         setMounted(true);
@@ -177,14 +247,21 @@ export default function Home() {
     if (!mounted) return null;
 
     return (
-        <main className="flex min-h-screen flex-col items-center justify-between p-4 bg-gray-50">
+        <main className="flex min-h-screen flex-col items-center justify-between p-4 pb-20 bg-gray-50">
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    type={toast.type}
+                    onClose={() => setToast(null)}
+                />
+            )}
             {/* Header */}
             <header className="w-full py-4 text-center">
                 <h1 className="text-xl font-bold text-gray-800">Groomer Mate</h1>
             </header>
 
             {/* User Status */}
-            <div className="flex flex-col items-center justify-center flex-grow space-y-4">
+            <div className="flex flex-col items-center justify-center flex-grow space-y-4 w-full max-w-md">
                 {error && (
                     <div className="p-4 text-red-500 bg-red-100 rounded-lg">
                         <p>LIFF Error: {error.message}</p>
@@ -192,14 +269,24 @@ export default function Home() {
                 )}
 
                 {isLoggedIn && profile ? (
-                    <div className="text-center">
-                        <img
-                            src={profile.pictureUrl}
-                            alt={profile.displayName}
-                            className="w-20 h-20 mx-auto rounded-full border-4 border-white shadow-lg"
-                        />
-                        <h2 className="mt-4 text-2xl font-bold text-gray-800">嗨！{profile.displayName}</h2>
-                    </div>
+                    <>
+                        <div className="text-center">
+                            <img
+                                src={profile.pictureUrl}
+                                alt={profile.displayName}
+                                className="w-20 h-20 mx-auto rounded-full border-4 border-white shadow-lg"
+                            />
+                            <h2 className="mt-4 text-2xl font-bold text-gray-800">嗨！{profile.displayName}</h2>
+                        </div>
+
+                        {/* Pet Selector */}
+                        <div className="w-full px-4">
+                            <PetSelector
+                                onSelect={handlePetSelect}
+                                selectedPetId={selectedPetId}
+                            />
+                        </div>
+                    </>
                 ) : (
                     <div className="text-center p-6 bg-white rounded-xl shadow-sm">
                         <h2 className="text-lg text-gray-600 mb-4">請使用 LINE 登入</h2>
@@ -235,11 +322,11 @@ export default function Home() {
                     onMouseDown={startRecording}
                     onMouseUp={stopRecording}
                     onTouchStart={(e) => {
-                        e.preventDefault(); // 防止觸發 mousedown 事件
+                        e.preventDefault();
                         startRecording();
                     }}
                     onTouchEnd={(e) => {
-                        e.preventDefault(); // 防止觸發 mouseup 事件
+                        e.preventDefault();
                         stopRecording();
                     }}
                     disabled={isProcessing}
@@ -270,6 +357,13 @@ export default function Home() {
                                     ✕
                                 </button>
                             </div>
+
+                            {/* Selected pet indicator */}
+                            {selectedPetName && (
+                                <p className="text-sm text-amber-600 font-medium mb-3">
+                                    寵物：{selectedPetName}
+                                </p>
+                            )}
 
                             {/* Tags */}
                             <div className="flex flex-wrap gap-2 mb-6">
@@ -302,15 +396,24 @@ export default function Home() {
                                 >
                                     取消
                                 </button>
+                                {liff?.isInClient() && (
+                                    <button
+                                        onClick={handleShare}
+                                        className="py-3 px-4 text-green-600 font-medium hover:bg-green-50 rounded-xl transition-colors flex items-center gap-1.5"
+                                    >
+                                        <Share2 className="w-4 h-4" />
+                                        分享
+                                    </button>
+                                )}
                                 <button
-                                    onClick={() => {
-                                        // TODO: Save to Supabase
-                                        setShowResult(false);
-                                        alert("儲存功能待實作");
-                                    }}
-                                    className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 transition-colors"
+                                    onClick={handleSave}
+                                    disabled={isSaving}
+                                    className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
-                                    確認儲存
+                                    {isSaving && (
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                                    )}
+                                    {isSaving ? '儲存中...' : '確認儲存'}
                                 </button>
                             </div>
                         </div>

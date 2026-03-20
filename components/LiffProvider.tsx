@@ -2,12 +2,14 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { initLiff, LiffState } from '@/lib/liff';
+import { setAccessToken } from '@/lib/api';
 
 const LiffContext = createContext<LiffState>({
     liff: null,
     isLoggedIn: false,
     error: null,
     profile: null,
+    accessToken: null,
 });
 
 export const useLiff = () => useContext(LiffContext);
@@ -24,6 +26,7 @@ export const LiffProvider = ({
         isLoggedIn: false,
         error: null,
         profile: null,
+        accessToken: null,
     });
 
     useEffect(() => {
@@ -31,7 +34,12 @@ export const LiffProvider = ({
             console.warn('LIFF ID is not provided.');
             return;
         }
-        initLiff(liffId).then(setLiffState);
+        initLiff(liffId).then((state) => {
+            setLiffState(state);
+            if (state.accessToken) {
+                setAccessToken(state.accessToken);
+            }
+        });
     }, [liffId]);
 
     return (
